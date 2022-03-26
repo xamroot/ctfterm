@@ -1,0 +1,17 @@
+[package]
+name = "ctfterm"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tui = "0.17.0"
+crossterm = "0.23.1"
+reqwest = "0.11.10"
+select = "0.6.0-alpha.1"
+tokio = {version = "1.17.0", features = ["rt","rt-multi-thread","macros"]}
+error-chain = "0.12.4"
+futures = "0.3.21"
+quick-xml = "0.23.0-alpha3"
+scraper = "0.12.0"
