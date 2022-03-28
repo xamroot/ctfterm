@@ -48,6 +48,66 @@ pub async fn get_past_events() -> Result<Vec<Vec<String>>> {
    Ok(ret) 
 }
 
+pub async fn get_writeups() -> Result<Vec<Vec<String>>> {
+	let mut resp = reqwest::get("https://ctftime.org/writeups").await.unwrap(); 
+	let body = resp.text().await.unwrap();
+	let fragment = Html::parse_document(&body);
+    let mut ret = vec![];
+
+	let tr_selector = Selector::parse("tr").unwrap();
+	let td_selector = Selector::parse("td").unwrap();
+
+    let tags_idx = 2;
+
+	for tr_element in fragment.select(&tr_selector) {
+        let mut new_event = vec![];
+        let mut curr_idx = 0;
+        for td_element in tr_element.select(&td_selector) {
+            // parse new td element
+            let elem = td_element.text().collect::<Vec<_>>();
+            // ensure elem has an index to be accessed
+            if elem.len() > 0
+            {
+                // check for tags data
+                if curr_idx == tags_idx
+                {
+                    let mut s: String = "".to_string();
+                    let mut subindex = 0;
+                    while subindex < elem.len()
+                    {
+                        let new_str = &String::from(elem[subindex]);
+                        if new_str.contains("\n\n") == false
+                        {
+                            s.push_str(new_str);
+                        }
+                        else
+                        {
+                            s.push_str(&" ".to_string());
+                        }
+                        subindex += 1;
+                    }
+                    new_event.push(s);
+                }
+                else
+                {
+                    // grab current data
+                    let mut s: String = String::from( elem[0] );
+                    new_event.push(s);
+                }
+            }
+            // increase current idx
+            // useful for knowing which data we are dealing with
+            curr_idx += 1;
+        }
+        // append new writeup if it's not empty
+        if new_event.len() > 0
+        {
+            ret.push(new_event);
+        }
+	}
+   Ok(ret) 
+}
+
 pub async fn get_stats() -> Result<Vec<Vec<String>>> {
 	let mut resp = reqwest::get("https://ctftime.org/stats/").await.unwrap(); 
 	let body = resp.text().await.unwrap();

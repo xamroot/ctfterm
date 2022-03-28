@@ -18,6 +18,7 @@ mod crawler;
 struct StatefulList<T> {
     state: ListState,
     items: Vec<T>,
+    idx: usize
 }
 
 impl<T: Clone> StatefulList<T> {
@@ -25,12 +26,36 @@ impl<T: Clone> StatefulList<T> {
         StatefulList {
             state: ListState::default(),
             items,
+            idx: 0,
         }
     }
-
+	
     fn scroll(&mut self) {
         self.items.push(self.items[0].clone());
         self.items.remove(0);
+    }
+
+    fn move_down(&mut self){
+        if self.idx < self.items.len()-1
+        {
+            self.items.push(self.items[0].clone());
+            self.items.remove(0);
+            self.idx += 1;
+        }
+    }
+
+
+    // a b c d e f
+    // b c d e f a
+    // c d e f a b
+    // b c d e f a
+    fn move_up(&mut self){
+        if self.idx > 0
+        {
+            self.items.insert(0, self.items[self.items.len()-1].clone());
+            self.items.remove(self.items.len()-1);
+            self.idx -= 1;
+        }
     }
 
     fn next(&mut self) {
@@ -67,21 +92,25 @@ impl<T: Clone> StatefulList<T> {
 }
 
 struct App<'a> {
+    focused: i16,
     current_events_list: StatefulList<&'a str>,
     past_events_list: StatefulList<(&'a str, &'a str)>,
     leaderboard_stats: StatefulList<(&'a str, &'a str, &'a str, &'a str)>,
+    writeups: StatefulList<(&'a str, &'a str, &'a str, &'a str, &'a str)>,
     events: Vec<(&'a str, &'a str)>,
 }
 
 impl<'a> App<'a> {
     fn new() -> App<'a> {
         App {
+            focused: 0,
             current_events_list: StatefulList::with_items(vec![
-
             ]),
             past_events_list: StatefulList::with_items(vec![
             ]),
             leaderboard_stats: StatefulList::with_items(vec![
+            ]),
+            writeups: StatefulList::with_items(vec![
             ]),
             events: vec![
                 ("Event1", "INFO"),
@@ -124,11 +153,6 @@ impl<'a> App<'a> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // initial crawl of data
-    let past_evts: Vec<Vec<String>> = crawler::get_past_events().await.unwrap();
-    let evts: Vec<String> = crawler::crawl().await?;
-    let leaderboard_stats: Vec<Vec<String>> = crawler::get_stats().await.unwrap();
-
     // setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();
@@ -138,6 +162,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     // initialize app
     let mut app = App::new();
+
+    // initial crawl of data
+    // NOTE: the initial crawl of data should just send 1 http request
+    // to ctftime.org's front page and grab initial bullshit from that
+    // get past events
+    let past_evts: Vec<Vec<String>> = crawler::get_past_events().await.unwrap();
+    // get current events
+    let evts: Vec<String> = crawler::crawl().await?;
+    // get leaderboard stats
+    let leaderboard_stats: Vec<Vec<String>> = crawler::get_stats().await.unwrap();
+    // get write ups
+    let writeups: Vec<Vec<String>> = crawler::get_writeups().await.unwrap();
     
     // update app with running events
     let mut i: usize = 0;
@@ -160,6 +196,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         app.leaderboard_stats.items.push((&stat[0], &stat[1], &stat[3], &stat[2]));
     }
 
+    // update app with writeups
+    for writeup in &writeups {
+        app.writeups.items.push((&writeup[0], &writeup[1], &writeup[2], &writeup[3], &writeup[4]));
+    }
+
     let res = run_app(&mut terminal, &mut app);
 
     // restore terminal
@@ -179,31 +220,123 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<()> {
-	let mut running = true;
-	let mut curr_keycode = 0;
-    let mut isThread = false;
-    let handle = std::thread::spawn(move || {
-        while running == true
-        {
-		    if let Event::Key(key) = event::read().unwrap() {
+	let up_input = std::sync::Mutex::new(0);
+    let up = std::sync::Arc::new(up_input);
+    let inputThreadUp = up.clone();
+
+	let down_input = std::sync::Mutex::new(0);
+    let down = std::sync::Arc::new(down_input);
+    let inputThreadDown = down.clone();
+
+	let right_input = std::sync::Mutex::new(0);
+    let right = std::sync::Arc::new(right_input);
+    let inputThreadRight = right.clone();
+
+	let left_input = std::sync::Mutex::new(0);
+    let left = std::sync::Arc::new(left_input);
+    let inputThreadLeft = left.clone();
+
+	let x = std::sync::Mutex::new(0);
+	let arc = std::sync::Arc::new(x);	
+	let inputThreadRunning = arc.clone();
+
+	let mut scrollCounter = 0;
+	let scrollTimer = 100;
+	let mut autoscroll = true;
+
+	// create input handler thread
+    let inputThreadHandle = std::thread::spawn(move || {
+		while *inputThreadRunning.lock().unwrap() < 1 {
+			if let Event::Key(key) = event::read().unwrap() {
 				if let KeyCode::Char('q') = key.code {
-                    running = false;
-                    isThread = true;
-                    break;
-                }
-            }
-        }
+					*inputThreadRunning.lock().unwrap() = 1;
+				}
+				else if let KeyCode::Char('w') = key.code {
+					*inputThreadUp.lock().unwrap() = 1;
+				}
+				else if let KeyCode::Char('s') = key.code {
+					*inputThreadDown.lock().unwrap() = 1;
+				}
+				else if let KeyCode::Char('d') = key.code {
+					*inputThreadRight.lock().unwrap() = 1;
+				}
+				else if let KeyCode::Char('a') = key.code {
+					*inputThreadLeft.lock().unwrap() = 1;
+				}
+			}
+		}
     });
 
+	let mut running = 0;
+    while running < 1 {
+		// updated shared running var
+		running = *arc.lock().unwrap();
 
-    if isThread == false {
-        while running == true {
-
-                terminal.draw(|f| ui(f, app));
-                app.past_events_list.scroll();
+        // handle inputs
+        if *down.lock().unwrap() > 0
+        {
+            if app.focused < 1
+            {
+                app.focused = 4;
+            }
+            else
+            {
+                app.focused -= 1;
+            }
+            *down.lock().unwrap() = 0;
         }
+        else if *up.lock().unwrap() > 0
+        {
+            app.focused = (app.focused+1)%5;
+            *up.lock().unwrap() = 0;
+        }
+        else if *right.lock().unwrap() > 0
+        {
+            if (app.focused == 3)
+            {
+               app.writeups.move_down(); 
+            }
+            else if (app.focused == 4)
+            {
+               app.leaderboard_stats.move_down(); 
+            }
+            *right.lock().unwrap() = 0;
+        }
+        else if *left.lock().unwrap() > 0
+        {
+            if (app.focused == 3)
+            {
+               app.writeups.move_up(); 
+            }
+            else if (app.focused == 4)
+            {
+                app.leaderboard_stats.move_up();
+            }
+            *left.lock().unwrap() = 0;
+        }
+
+		// handle data auto-scrolling
+		if autoscroll
+		{
+			// check timer, for artificial sleep
+			// using sleep would get funky with input
+			if scrollCounter <= 0
+			{
+				scrollCounter = scrollTimer;
+				app.past_events_list.scroll();
+			}
+			else
+			{
+				scrollCounter -= 1;
+			}
+		}
+
+		// update terminal view
+        terminal.draw(|f| ui(f, app));
+		
     }
-    handle.join().unwrap();
+
+	inputThreadHandle.join().unwrap();
     return Ok(());
 }
 
@@ -212,6 +345,11 @@ fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> io::Result<
  * create leaderboard widget via App.leaderboard_stats 
  */
 fn build_leaderboard<'a>(app:&'a mut App) -> Table<'a> {
+    let mut color: Color = Color::Red; 
+    if app.focused == 4
+    {
+        color = Color::White;
+    }
     let selected_style = Style::default().add_modifier(Modifier::REVERSED);
     let normal_style = Style::default().fg(Color::Red);
 
@@ -224,7 +362,7 @@ fn build_leaderboard<'a>(app:&'a mut App) -> Table<'a> {
                 .add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Red))
+        .border_style(Style::default().fg(color))
         .title_alignment(Alignment::Left);
     
     // set up headers
@@ -269,9 +407,15 @@ fn build_leaderboard<'a>(app:&'a mut App) -> Table<'a> {
 }
 
 fn build_current_events<'a>(app :&'a mut App, width: usize) -> List<'a> {
+    let mut color: Color = Color::Red; 
+    if app.focused == 1
+    {
+        color = Color::White;
+    }
+
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Red))
+        .border_style(Style::default().fg(color))
         .title(Span::styled(
             "Now Running",
             Style::default()
@@ -305,9 +449,14 @@ fn build_current_events<'a>(app :&'a mut App, width: usize) -> List<'a> {
 }
 
 fn build_past_events<'a>(app :&'a mut App, width: usize) -> List<'a> {
+    let mut color: Color = Color::Red; 
+    if app.focused == 2
+    {
+        color = Color::White;
+    }
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Red))
+        .border_style(Style::default().fg(color))
         .title(Span::styled(
             "Past Events",
             Style::default()
@@ -325,6 +474,48 @@ fn build_past_events<'a>(app :&'a mut App, width: usize) -> List<'a> {
                 Spans::from("-".repeat(width)),
                 Spans::from(vec![Span::from(Span::styled(name, Style::default().add_modifier(Modifier::BOLD)))]),
                 Spans::from(vec![Span::raw(data)]),
+            ])
+        })
+        .collect();
+
+    // Create a List from all list items and highlight the currently selected one
+    let items = List::new(items)
+        .block(block)
+        .highlight_style(
+            Style::default()
+                .bg(Color::LightGreen)
+                .add_modifier(Modifier::BOLD),
+        )
+        .highlight_symbol(">> ");
+    return items;
+}
+
+fn build_writeups<'a>(app :&'a mut App, width: usize) -> List<'a> {
+    let mut color: Color = Color::Red; 
+    if app.focused == 3
+    {
+        color = Color::White;
+    }
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(color))
+        .title(Span::styled(
+            "Write Ups",
+            Style::default()
+                .fg(Color::Red)
+                .add_modifier(Modifier::BOLD),
+        ))
+        .title_alignment(Alignment::Right);
+    // Iterate through all elements in the `items` app and append some debug text to it.
+    let items: Vec<ListItem> = app
+        .writeups
+        .items
+        .iter()
+        .map(|&(w1, w2, w3, w4, w5)| {
+            ListItem::new(vec![
+                Spans::from(vec![
+                            Span::raw("["), Span::raw(w3), Span::raw("]"),
+                            /*Span::raw(w1), Span::raw(" "), */Span::raw(w2),]),
             ])
         })
         .collect();
@@ -385,17 +576,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut App) {
         .split(chunks[1]);
 
     // Bottom left block with all default borders
-    let block = Block::default()
-        .title(Span::styled(
-            "Recent Write Ups",
-            Style::default()
-                .fg(Color::Red)
-                .add_modifier(Modifier::BOLD),
-        ))
-        .border_style(Style::default().fg(Color::Red))
-        .borders(Borders::ALL);
-
-    f.render_widget(block, bottom_chunks[0]);
+    f.render_widget(build_writeups(app, bottom_chunks[0].width as usize), bottom_chunks[0]);
 
     // Bottom right block with styled left and right border
     // build calender
