@@ -13,7 +13,7 @@ use tui::{
     Frame, Terminal,
 };
 use futures::executor::block_on;
-mod crawler;
+mod loaders;
 
 struct StatefulList<T> {
     state: ListState,
@@ -94,10 +94,11 @@ impl<T: Clone> StatefulList<T> {
 struct App<'a> {
     focused: i16,
     term_height: u16,
+    curr_events: StatefulList<String>,
     current_events_list: StatefulList<String>,
     past_events_list: StatefulList<(String, String)>,
     leaderboard_stats: StatefulList<(String, String, String, String)>,
-    writeups: StatefulList<(&'a str, &'a str, &'a str, &'a str, &'a str)>,
+    writeups: StatefulList<(String, String, String, String, String)>,
     events: Vec<(&'a str, &'a str)>,
 }
 
@@ -106,6 +107,8 @@ impl<'a> App<'a> {
         App {
             focused: 0,
             term_height: 0,
+            curr_events: StatefulList::with_items(vec![
+            ]),
             current_events_list: StatefulList::with_items(vec![
             ]),
             past_events_list: StatefulList::with_items(vec![
@@ -179,62 +182,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("{:?}", err)
     }*/
 
-    Ok(())
-}
-
-async fn load_past_events(mut past_events_items: &mut Vec<(String, String)>)->io::Result<()>
-{
-    // get past events
-    let past_evts: Vec<Vec<String>> = crawler::get_past_events().await.unwrap();
-    for evt in &past_evts {
-        if evt.len() > 0 {
-            past_events_items.push((evt[0].clone(), evt[1].clone()));
-        }
-    }
-    Ok(())
-}
-
-async fn load_leaderboard_stats(mut leaderboard_stats_items: &mut Vec<(String, String, String, String)>)->io::Result<()>
-{
-    // get leaderboard stats
-    let leaderboard_stats: Vec<Vec<String>> = crawler::get_stats().await.unwrap();
-    // update app with leaderboard stats
-    for stat in &leaderboard_stats {
-        leaderboard_stats_items.push(
-            (
-                stat[0].clone(), 
-                stat[1].clone(), 
-                stat[3].clone(), 
-                stat[2].clone()
-            )
-        );
-    }
-    Ok(())
-}
-
-async fn load_current_events(mut current_events_items: &mut Vec<String>)->io::Result<()>
-{
-    // get current events
-    let evts: Vec<String> = crawler::crawl().await.unwrap();
-    // get write ups
-    //let writeups: Vec<Vec<String>> = crawler::get_writeups().await.unwrap();
-
-    // update app with running events
-    let mut i: usize = 0;
-    for evt in &evts{
-        if i > 0 {
-            current_events_items.push(evts[i].clone());
-        }
-        i += 1;
-    }
-
-    /*
-    // update app with writeups
-    for writeup in &writeups {
-        app.writeups.items.push((&writeup[0], &writeup[1], &writeup[2], &writeup[3], &writeup[4]));
-    }
-    */
-    
     Ok(())
 }
 
@@ -360,9 +307,10 @@ async fn run_app<'a,B: Backend>(terminal: &mut Terminal<B>, app: &'a mut App<'a>
 		
         if needLoad
         {
-            load_current_events(&mut app.current_events_list.items).await;
-            load_past_events(&mut app.past_events_list.items).await;
-            load_leaderboard_stats(&mut app.leaderboard_stats.items).await;
+            loaders::load_current_events(&mut app.curr_events.items).await;
+            loaders::load_past_events(&mut app.past_events_list.items).await;
+            loaders::load_leaderboard(&mut app.leaderboard_stats.items).await;
+            loaders::load_writeups(&mut app.writeups.items).await;
             needLoad = false;
         }
     }
@@ -536,7 +484,7 @@ fn build_writeups<'a>(app :&'a mut App, width: usize) -> List<'a> {
         .writeups
         .items
         .iter()
-        .map(|&(w1, w2, w3, w4, w5)| {
+        .map(|(w1, w2, w3, w4, w5)| {
             ListItem::new(vec![
                 Spans::from(vec![
                             Span::raw("["), Span::raw(w3), Span::raw("]"),
