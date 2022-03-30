@@ -50,6 +50,11 @@ pub async fn load_current_events(mut current_events_items: &mut Vec<String>)->io
         }
         i += 1;
     }
+    
+    if current_events_items.len() < 1
+    {
+        current_events_items.push(String::from("None"));
+    }
 
     Ok(())
 }

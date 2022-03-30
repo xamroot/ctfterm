@@ -44,6 +44,15 @@ impl<T: Clone> StatefulList<T> {
         }
     }
 
+    fn get(&mut self, index: usize) -> &T
+    {
+        return &self.items[index]; 
+    }
+
+    fn set(&mut self, data: T, index: usize)
+    {
+        self.items[index] = data;
+    }
 
     // a b c d e f
     // b c d e f a
@@ -291,9 +300,26 @@ async fn run_app<'a,B: Backend>(terminal: &mut Terminal<B>, app: &'a mut App<'a>
 			if scrollCounter <= 0
 			{
 				scrollCounter = scrollTimer;
+                /* scroll past events
                 if app.past_events_list.items.len() > 10
                 {
 				    app.past_events_list.scroll();
+                }*/
+
+                // scroll current event string
+                if app.curr_events.items.len() > 0
+                {
+                    let mut curr_event_s = String::new();
+                    let mut first_ch = String::new();
+
+                    curr_event_s = app.curr_events.get(0).clone();
+
+                    first_ch.push(curr_event_s.chars().nth(0).unwrap());
+
+                    curr_event_s = curr_event_s[1..curr_event_s.len()].to_string();
+                    curr_event_s.push_str(&first_ch);
+
+                    app.curr_events.set(curr_event_s, 0);
                 }
 			}
 			else
@@ -397,7 +423,7 @@ fn build_current_events<'a>(app :&'a mut App, width: usize) -> List<'a> {
         .title_alignment(Alignment::Right);
     // Iterate through all elements in the `items` app and append some debug text to it.
     let items: Vec<ListItem> = app
-        .current_events_list
+        .curr_events
         .items
         .iter()
         .map(|name| {
