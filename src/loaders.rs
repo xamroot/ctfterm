@@ -38,6 +38,7 @@ pub async fn load_current_events(mut current_events_items: &mut Vec<String>)->io
 {
     // get current events
     let evts: Vec<String> = crawler::crawl().await.unwrap();
+    let mut s = String::from("");
 
     // update app with running events
     let mut i: usize = 0;
@@ -45,17 +46,19 @@ pub async fn load_current_events(mut current_events_items: &mut Vec<String>)->io
         if i > 0 {
             for ch in evts[i].chars()
             {
-                current_events_items.push(evts[i].clone());
+                s.push_str( &String::from(" | ") );
+                s.push_str( &evts[i].clone());
             }
         }
         i += 1;
     }
     
-    if current_events_items.len() < 1
+    if i < 2
     {
-        current_events_items.push(String::from("None"));
+        s.push_str( &String::from(" | ") );
+        s.push_str( &String:: from( "None" ) );
     }
-
+    current_events_items.push( s.clone() );
     Ok(())
 }
 

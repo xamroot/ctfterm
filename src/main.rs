@@ -234,7 +234,7 @@ async fn run_app<'a,B: Backend>(terminal: &mut Terminal<B>, app: &'a mut types::
             {
                 let res = &*results_.lock().unwrap();
                 let new_items = &res;
-                //app.curr_events.update( &new_items.0 );
+                app.curr_events.update( &new_items.0.as_ref().unwrap() );
                 app.leaderboard_stats.update( &new_items.1.as_ref().unwrap() );
                 app.past_events_list.update( &new_items.2.as_ref().unwrap() );
                 app.writeups.update( &new_items.3.as_ref().unwrap() );
