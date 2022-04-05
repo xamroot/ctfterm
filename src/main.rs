@@ -230,7 +230,7 @@ async fn run_app<'a,B: Backend>(terminal: &mut Terminal<B>, app: &'a mut types::
         let tmp_needs_load = *needs_load.lock().unwrap();
         if tmp_needs_load
         {
-            if *loaded.lock().unwrap() == load_total
+            if  *loaded.lock().unwrap() == load_total
             {
                 let res = &*results_.lock().unwrap();
                 let new_items = &res;
@@ -238,6 +238,8 @@ async fn run_app<'a,B: Backend>(terminal: &mut Terminal<B>, app: &'a mut types::
                 app.leaderboard_stats.update( &new_items.1.as_ref().unwrap() );
                 app.past_events_list.update( &new_items.2.as_ref().unwrap() );
                 app.writeups.update( &new_items.3.as_ref().unwrap() );
+
+                *needs_load.lock().unwrap() = false;
             }
         }
     }
@@ -460,7 +462,7 @@ fn ui<B: Backend>(f: &mut Frame<B>, app: &mut types::App) {
 
     let top_left_chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)].as_ref())
+        .constraints([Constraint::Percentage(20), Constraint::Percentage(80)].as_ref())
         .split(top_chunks[0]);
 
     // build widgets
